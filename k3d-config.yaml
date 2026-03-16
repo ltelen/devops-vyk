@@ -1,0 +1,28 @@
+# k3d-config.yaml
+# Declarative cluster definition for k3d v5+
+# Doc: https://k3d.io/v5.x/usage/configfile/
+apiVersion: k3d.io/v1alpha5
+kind: Simple
+
+metadata:
+  name: devops-vyk
+
+# 1 control-plane + 2 worker nodes
+servers: 1
+agents: 2
+
+# Map host port 8080 → LB port 80 so curl http://localhost:8080 reaches ingress
+ports:
+  - port: 8080:80
+    nodeFilters:
+      - loadbalancer
+
+# Disable default traefik; we rely on the k3d built-in LB + ArgoCD ingress
+options:
+  k3s:
+    extraArgs:
+      - arg: --disable=traefik
+        nodeFilters:
+          - server:*
+
+image: rancher/k3s:v1.29.4-k3s1
