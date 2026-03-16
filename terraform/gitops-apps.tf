@@ -11,8 +11,6 @@ resource "kubectl_manifest" "argocd_app_infrastructure" {
     metadata:
       name: infrastructure
       namespace: ${local.argocd_namespace}
-      annotations:
-        argocd.argoproj.io/sync-wave: "0"
     spec:
       project: default
       source:
@@ -37,6 +35,22 @@ resource "kubectl_manifest" "argocd_app_infrastructure" {
   depends_on = [helm_release.argocd]
 }
 
+# Block until the infrastructure Application is fully synced and healthy before
+# creating the applications App. This ensures MySQL is running before the
+# backend attempts to connect.
+resource "null_resource" "wait_for_infrastructure" {
+  provisioner "local-exec" {
+    command = <<-EOT
+      kubectl wait application/infrastructure \
+        -n ${local.argocd_namespace} \
+        --for=jsonpath='{.status.health.status}'=Healthy \
+        --timeout=300s
+    EOT
+  }
+
+  depends_on = [kubectl_manifest.argocd_app_infrastructure]
+}
+
 resource "kubectl_manifest" "argocd_app_applications" {
   yaml_body = <<-YAML
     apiVersion: argoproj.io/v1alpha1
@@ -44,8 +58,6 @@ resource "kubectl_manifest" "argocd_app_applications" {
     metadata:
       name: applications
       namespace: ${local.argocd_namespace}
-      annotations:
-        argocd.argoproj.io/sync-wave: "1"
     spec:
       project: default
       source:
@@ -65,6 +77,6 @@ resource "kubectl_manifest" "argocd_app_applications" {
 
   depends_on = [
     helm_release.argocd,
-    kubectl_manifest.argocd_app_infrastructure,
+    null_resource.wait_for_infrastructure,
   ]
 }

@@ -1,9 +1,11 @@
 # devops-vyk
 
-`make all` creates a local Kubernetes cluster, installs Argo CD with Terraform, and lets Argo CD sync two Helm charts from this repo:
+`make all` creates a local Kubernetes cluster, installs Argo CD with Terraform, and deploys two Helm charts in dependency order:
 
-- `infrastructure/infra-chart` (MySQL + backup job)
-- `applications/stack-chart` (frontend/backend app services)
+1. `infrastructure/infra-chart` (MySQL + backup job) — deployed first
+2. `applications/stack-chart` (frontend/backend) — deployed only after infrastructure is healthy
+
+Terraform creates both Argo CD Application resources directly. A `null_resource` between them runs `kubectl wait` to block until the infrastructure Application reaches `Healthy` before the applications Application is created — ensuring MySQL is running before the backend starts.
 
 ## What gets deployed
 
@@ -78,12 +80,12 @@ kubectl get secret argocd-initial-admin-secret \
 
 ## Important repo config
 
-Argo CD source repo and revision are in `terraform/gitops-apps.tf`:
+`terraform/gitops-apps.tf` contains two locals that control where Argo CD pulls from:
 
-- `repo_url = "https://github.com/ltelen/devops-vyk.git"`
-- `target_revision = "main"`
+- `repo_url` — your Git remote
+- `target_revision` — branch or tag to track
 
-If you work from a fork or another branch, update those values and run `make deploy` again.
+If you fork the repo or work from a different branch, update those two values and run `make deploy` again.
 
 ## Day-to-day commands
 
