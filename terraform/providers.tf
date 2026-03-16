@@ -20,6 +20,14 @@ terraform {
       source  = "hashicorp/kubernetes"
       version = "~> 2.30"
     }
+    # kubectl provider defers CRD schema validation to apply time, not plan time.
+    # This is required when the CRD (e.g. argoproj.io/Application) is installed
+    # in the same Terraform workspace — kubernetes_manifest fails at plan because
+    # it validates the GroupVersionKind against the live API before Argo CD exists.
+    kubectl = {
+      source  = "alekc/kubectl"
+      version = "~> 2.0"
+    }
   }
 }
 
@@ -52,4 +60,16 @@ provider "helm" {
     config_path    = local.kubeconfig_path
     config_context = local.cluster_name
   }
+}
+
+# ---------------------------------------------------------------------------
+# kubectl provider
+#
+# Used instead of kubernetes_manifest for Argo CD Application CRDs.
+# Same kubeconfig / context as the other providers.
+# ---------------------------------------------------------------------------
+provider "kubectl" {
+  config_path    = local.kubeconfig_path
+  config_context = local.cluster_name
+  load_config_file = true
 }
