@@ -1,54 +1,12 @@
 # devops-vyk
 
-`make all` creates a local Kubernetes cluster, installs Argo CD with Terraform, and deploys two Helm charts in dependency order:
+Local GitOps platform on k3d. Terraform sets up the cluster tooling (Argo CD), and Argo CD takes it from there — syncing a MySQL infrastructure chart and a frontend/backend application chart from this repo.
 
-1. `infrastructure/infra-chart` (MySQL + backup job) — deployed first
-2. `applications/stack-chart` (frontend/backend) — deployed only after infrastructure is healthy
-
-Terraform creates both Argo CD Application resources directly. A `null_resource` between them runs `kubectl wait` to block until the infrastructure Application reaches `Healthy` before the applications Application is created — ensuring MySQL is running before the backend starts.
-
-## What gets deployed
-
-### Infrastructure chart
-
-- `mysql-credentials` Secret (credentials)
-- `mysql-config` ConfigMap (server config mounted at `/etc/mysql/conf.d`)
-- `mysql-data` PVC
-- `mysql-backups` PVC
-- `mysql` Deployment + Service
-- `mysql-backup` CronJob (mysqldump every 5 minutes)
-
-Sync order is controlled by `syncWaves` in `infrastructure/infra-chart/values.yaml`:
-
-- `base` -> secret + PVCs
-- `mysql` -> deployment + service
-- `backup` -> cronjob
-
-### Application chart
-
-`applications/stack-chart` uses a single looped template for Deployments and a single looped template for Services. Everything comes from `services` in `applications/stack-chart/values.yaml`.
-
-Each service entry supports:
-
-- image, replicas, ports, resources
-- sync wave
-- optional probes (`liveness`, `readiness`, `startup`)
-- optional args
-- optional ConfigMap (`configmap.enabled: true`, `configmap.data`)
-- optional Secret (`secret.enabled: true`, `secret.data`) — values are base64-encoded at render time
-
-Resources that are disabled or omitted are not rendered.
+Infrastructure is always deployed before applications. Terraform waits for the infrastructure Argo CD Application to reach Healthy before creating the applications one, so MySQL is guaranteed to be up when the backend starts.
 
 ## Prerequisites
 
-- k3d
-- kubectl
-- Terraform >= 1.6
-- Helm >= 3.14
-- Docker
-- make
-
-All tools must be available in your shell `PATH`.
+k3d, kubectl, Terraform >= 1.6, Helm >= 3.14, Docker, make — all on `PATH`.
 
 ## Quickstart
 
@@ -58,140 +16,128 @@ cd devops-vyk
 make all
 ```
 
-This runs:
+This creates the k3d cluster and runs `terraform apply`. Terraform installs Argo CD, waits for the infrastructure app to be healthy (MySQL ready, backups configured), then registers the applications app. The whole thing takes 3–5 minutes on a decent connection.
 
-1. `make cluster` -> creates the k3d cluster from `k3d-config.yaml`
-2. `make deploy` -> `terraform init -upgrade` + `terraform apply -auto-approve`
-
-## Argo CD access
+## Argo CD
 
 ```bash
 kubectl port-forward svc/argocd-server -n argocd 8443:80
-open http://localhost:8443
 ```
 
-Get initial admin password:
+Open http://localhost:8443, username `admin`, password:
 
 ```bash
 kubectl get secret argocd-initial-admin-secret \
-  -n argocd \
-  -o jsonpath="{.data.password}" | base64 -d && echo
+  -n argocd -o jsonpath="{.data.password}" | base64 -d && echo
 ```
 
-## Important repo config
+## Configuration
 
-`terraform/gitops-apps.tf` contains two locals that control where Argo CD pulls from:
+Repo URL and branch are set as locals in `terraform/gitops-apps.tf`. If you fork or switch branches, update those and re-run `make deploy`.
 
-- `repo_url` — your Git remote
-- `target_revision` — branch or tag to track
+MySQL credentials, PVC sizes, backup schedule, and server config live in `infrastructure/infra-chart/values.yaml`. Application images and replicas are in `applications/stack-chart/values.yaml`.
 
-If you fork the repo or work from a different branch, update those two values and run `make deploy` again.
+The application chart supports optional ConfigMaps and Secrets per service — add `configmap.enabled: true` / `secret.enabled: true` with a `data` block to any service entry in values and the templates handle the rest.
 
-## Day-to-day commands
+## Commands
 
 ```bash
-# deploy everything
-make all
-
-# only create cluster
-make cluster
-
-# only apply terraform/argocd changes
-make deploy
-
-# show logs of latest backup job pod
-make verify
-
-# teardown
-make destroy
+make all      # cluster + terraform apply
+make cluster  # cluster only
+make deploy   # terraform apply only
+make verify   # logs from the latest backup pod
+make destroy  # tear everything down
+make clean    # remove .terraform cache
 ```
 
-Manual backup trigger:
+## Verifications
+
+### Argo CD sync status
+
+```bash
+kubectl get applications -n argocd
+```
+
+Both `infrastructure` and `applications` should show `Synced` and `Healthy`.
+
+### Backup running
+
+```bash
+make verify
+```
+
+Or trigger one manually and follow the logs:
 
 ```bash
 kubectl create job --from=cronjob/mysql-backup manual-backup-$(date +%s) -n infrastructure
 kubectl logs -n infrastructure -l job-name=manual-backup-<suffix> -f
 ```
 
-Verify backup files are written to the PVC:
+Exec into a pod to inspect the actual files on the PVC:
 
 ```bash
 kubectl run backup-inspector \
-  --image=mysql:8.0 \
-  --restart=Never \
-  --rm -it \
+  --image=mysql:8.0 --restart=Never --rm -it \
   --overrides='{
     "spec": {
       "volumes": [{"name":"bk","persistentVolumeClaim":{"claimName":"mysql-backups"}}],
       "containers": [{"name":"backup-inspector","image":"mysql:8.0",
         "command":["bash"],"volumeMounts":[{"name":"bk","mountPath":"/backups"}]}]
     }
-  }' \
-  -n infrastructure
+  }' -n infrastructure
 
-# Inside the pod:
+# inside the pod
 ls -lh /backups/
 zcat /backups/dump-<timestamp>.sql.gz | head -20
 ```
 
-## Access frontend and backend
-
-The services are ClusterIP. Use port-forward to reach them locally:
+### Frontend and backend
 
 ```bash
-# Frontend (nginx)
+# frontend (nginx)
 kubectl port-forward svc/applications-frontend -n applications 8080:80
 curl http://localhost:8080
 
-# Backend (http-echo)
+# backend (http-echo)
 kubectl port-forward svc/applications-backend -n applications 5678:5678
 curl http://localhost:5678
-# returns: Hello from backend
+# Hello from backend
 ```
 
-Service names follow the pattern `<argo-app-name>-<service-name>`. The Argo CD app is named `applications`, so the services are `applications-frontend` and `applications-backend`.
+### Data persistence
 
-## Verify data persistence
-
-This confirms that MySQL data survives a pod restart (data lives on the PVC, not inside the container):
+Write something to MySQL, restart the pod, and verify it's still there:
 
 ```bash
-# Connect to MySQL
 kubectl exec -it deploy/mysql -n infrastructure -- \
   mysql -u appuser -papppassword appdb
 
-# Create a table and insert a row
 CREATE TABLE IF NOT EXISTS test (id INT PRIMARY KEY, val VARCHAR(50));
 INSERT INTO test VALUES (1, 'persisted');
 exit
 
-# Delete the MySQL pod — Recreate strategy brings it back automatically
 kubectl delete pod -l app.kubernetes.io/name=mysql -n infrastructure
 
-# Wait for the pod to become ready
 kubectl wait --for=condition=ready pod \
-  -l app.kubernetes.io/name=mysql \
-  -n infrastructure --timeout=60s
+  -l app.kubernetes.io/name=mysql -n infrastructure --timeout=60s
 
-# Verify the row survived
 kubectl exec -it deploy/mysql -n infrastructure -- \
   mysql -u appuser -papppassword appdb -e "SELECT * FROM test;"
 ```
 
-## Notes and limitations
+## Known issues
 
-- Credentials are stored in git (good enough for local dev only).
-- MySQL is single replica (`Recreate` strategy), so restarts cause downtime.
-- Argo CD is configured insecure for local use.
-- App services are ClusterIP only (no ingress by default).
+- Credentials are in Git — fine for local dev, not for production
+- MySQL runs as a single replica with `Recreate` strategy, so restarts cause a brief outage
+- Argo CD is running without TLS (`--insecure`)
+- No ingress — services are ClusterIP, use port-forward to access them
 
 ## Troubleshooting
 
-- `terraform plan` complaining about Argo CD `Application` CRD:
-  this repo uses `kubectl_manifest` to avoid plan-time CRD validation issues.
+**`terraform plan` fails with `no matches for kind Application`** — the `kubernetes_manifest` provider validates CRDs at plan time and Argo CD doesn't exist yet. This repo uses `kubectl_manifest` (alekc/kubectl provider) which skips plan-time validation.
 
-- Argo CD stuck on PVC health:
-  `terraform/argocd.tf` includes a PVC health override for `WaitForFirstConsumer`.
+**Argo CD sync stuck on PVC health** — k3d's `local-path` StorageClass uses `WaitForFirstConsumer`, so PVCs stay Pending until a consumer pod is scheduled. There's a Lua health override in `argocd.tf` that treats Pending PVCs as Healthy to unblock wave progression.
 
-- `mysqldump` PROCESS privilege error:
-  backup job already uses `--no-tablespaces`.
+**`mysqldump` PROCESS privilege error** — MySQL 8.0 needs the `PROCESS` privilege to dump tablespace metadata. The backup job uses `--no-tablespaces` to skip that.
+
+**`make deploy` times out waiting for infrastructure** — check MySQL pod logs: `kubectl logs -n infrastructure -l app.kubernetes.io/name=mysql`
