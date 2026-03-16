@@ -33,6 +33,18 @@ spec:
           {{- end }}
           ports:
             - containerPort: {{ $service.port }}
+          {{- with $service.probes.liveness }}
+          livenessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $service.probes.readiness }}
+          readinessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $service.probes.startup }}
+          startupProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           {{- with $service.resources }}
           resources:
             {{- toYaml . | nindent 12 }}
