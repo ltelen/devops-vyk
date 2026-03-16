@@ -1,39 +1,54 @@
 # applications/stack-chart/values.yaml
 # ---------------------------------------------------------------------------
-# Top-level keys match component names.  Templates reference .Values.frontend
-# and .Values.backend respectively, keeping concerns clearly separated.
+# Define any number of services in this list. The chart renders one Deployment
+# and one Service per entry (unless explicitly disabled).
 # ---------------------------------------------------------------------------
 
-frontend:
-  name: frontend
-  replicaCount: 2
-  image:
-    repository: nginx
-    tag: "1.25-alpine"
-    pullPolicy: IfNotPresent
-  port: 80
-  resources:
-    requests:
-      cpu: "50m"
-      memory: "64Mi"
-    limits:
-      cpu: "200m"
-      memory: "128Mi"
+services:
+  - name: backend
+    syncWave: "0"
+    deployment:
+      enabled: true
+    service:
+      enabled: true
+      type: ClusterIP
+    replicaCount: 2
+    image:
+      repository: hashicorp/http-echo
+      tag: "latest"
+      pullPolicy: IfNotPresent
+    args:
+      - "-text=Hello from backend"
+    port: 5678
+    resources:
+      requests:
+        cpu: "50m"
+        memory: "64Mi"
+        ephemeral-storage: "100Mi"
+      limits:
+        cpu: "200m"
+        memory: "128Mi"
+        ephemeral-storage: "200Mi"
 
-backend:
-  name: backend
-  replicaCount: 2
-  image:
-    repository: hashicorp/http-echo
-    tag: "latest"
-    pullPolicy: IfNotPresent
-  port: 5678
-  args:
-    - "-text=Hello from backend"
-  resources:
-    requests:
-      cpu: "50m"
-      memory: "64Mi"
-    limits:
-      cpu: "200m"
-      memory: "128Mi"
+  - name: frontend
+    syncWave: "1"
+    deployment:
+      enabled: true
+    service:
+      enabled: true
+      type: ClusterIP
+    replicaCount: 2
+    image:
+      repository: nginx
+      tag: "1.25-alpine"
+      pullPolicy: IfNotPresent
+    port: 80
+    resources:
+      requests:
+        cpu: "50m"
+        memory: "64Mi"
+        ephemeral-storage: "100Mi"
+      limits:
+        cpu: "200m"
+        memory: "128Mi"
+        ephemeral-storage: "200Mi"

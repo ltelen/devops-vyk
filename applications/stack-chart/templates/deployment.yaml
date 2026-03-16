@@ -1,0 +1,41 @@
+{{/* applications/stack-chart/templates/deployment.yaml */}}
+{{- range $service := .Values.services }}
+{{ if (default true $service.deployment.enabled) }}
+{{- $ctx := dict "Release" $.Release "Chart" $.Chart "component" $service.name -}}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "stack-chart.fullname" $ctx }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "stack-chart.labels" $ctx | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/sync-wave: {{ default "0" $service.syncWave | quote }}
+spec:
+  replicas: {{ default 1 $service.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "stack-chart.selectorLabels" $ctx | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "stack-chart.selectorLabels" $ctx | nindent 8 }}
+    spec:
+      automountServiceAccountToken: false
+      containers:
+        - name: {{ $service.name }}
+          image: "{{ $service.image.repository }}:{{ $service.image.tag }}"
+          imagePullPolicy: {{ default "IfNotPresent" $service.image.pullPolicy }}
+          {{- with $service.args }}
+          args:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          ports:
+            - containerPort: {{ $service.port }}
+          {{- with $service.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+{{ end }}
+{{- end }}

@@ -1,0 +1,39 @@
+{{- if .Values.mysql.dataPvc.enabled }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ .Values.mysql.dataPvc.name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "infrastructure.labels" . | nindent 4 }}
+    app.kubernetes.io/component: database
+  annotations:
+    argocd.argoproj.io/sync-wave: {{ .Values.syncWaves.base | quote }}
+spec:
+  accessModes:
+    {{- toYaml .Values.mysql.dataPvc.accessModes | nindent 4 }}
+  resources:
+    requests:
+      storage: {{ .Values.mysql.dataPvc.storage }}
+{{- end }}
+
+{{- if .Values.backup.pvc.enabled }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ .Values.backup.pvc.name }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "infrastructure.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backup
+  annotations:
+    argocd.argoproj.io/sync-wave: {{ .Values.syncWaves.base | quote }}
+spec:
+  accessModes:
+    {{- toYaml .Values.backup.pvc.accessModes | nindent 4 }}
+  resources:
+    requests:
+      storage: {{ .Values.backup.pvc.storage }}
+{{- end }}

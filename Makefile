@@ -1,4 +1,3 @@
-# Makefile — developer ergonomics for the devops-vyk platform
 # Requires: k3d, kubectl, terraform, helm
 
 CLUSTER_NAME  := devops-vyk
@@ -9,7 +8,7 @@ CRONJOB_NAME  := mysql-backup
 
 .PHONY: all cluster deploy destroy verify clean
 
-## Default target
+## Wrapper for deploying the cluster and terraform resources in one step
 all: cluster deploy
 
 ## Create the k3d cluster from the declarative config

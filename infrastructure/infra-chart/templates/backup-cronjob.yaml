@@ -1,36 +1,25 @@
-# infrastructure/backup-cronjob.yaml
-# ---------------------------------------------------------------------------
-# MySQL backup CronJob — wave 2.
-#
-# Sync Wave 2 ensures:
-#   - Wave 0: mysql-credentials Secret + both PVCs are Bound
-#   - Wave 1: MySQL Deployment is Healthy (readiness probe passed)
-#   - Wave 2: THIS CronJob is created only after MySQL is confirmed running
-#
-# The job runs mysqldump and writes compressed output to the backup PVC.
-# Filename includes a timestamp; old files are not pruned here — add a
-# separate housekeeping job if storage pressure becomes a concern.
-# ---------------------------------------------------------------------------
+{{- if .Values.backup.cronjob.enabled }}
+---
 apiVersion: batch/v1
 kind: CronJob
 metadata:
-  name: mysql-backup
-  namespace: infrastructure
+  name: {{ .Values.backup.cronjob.name }}
+  namespace: {{ .Release.Namespace }}
   labels:
+    {{- include "infrastructure.labels" . | nindent 4 }}
     app.kubernetes.io/name: mysql-backup
     app.kubernetes.io/component: backup
-    app.kubernetes.io/managed-by: argocd
   annotations:
-    argocd.argoproj.io/sync-wave: "2"
+    argocd.argoproj.io/sync-wave: {{ .Values.syncWaves.backup | quote }}
 spec:
-  schedule: "*/5 * * * *"      # every 5 minutes
-  concurrencyPolicy: Forbid    # never run two backup jobs simultaneously
-  successfulJobsHistoryLimit: 5
-  failedJobsHistoryLimit: 5
+  schedule: {{ .Values.backup.cronjob.schedule | quote }}
+  concurrencyPolicy: {{ .Values.backup.cronjob.concurrencyPolicy }}
+  successfulJobsHistoryLimit: {{ .Values.backup.cronjob.successfulJobsHistoryLimit }}
+  failedJobsHistoryLimit: {{ .Values.backup.cronjob.failedJobsHistoryLimit }}
   jobTemplate:
     spec:
-      backoffLimit: 2
-      ttlSecondsAfterFinished: 1200  # auto-cleanup after 20 minutes
+      backoffLimit: {{ .Values.backup.cronjob.backoffLimit }}
+      ttlSecondsAfterFinished: {{ .Values.backup.cronjob.ttlSecondsAfterFinished }}
       template:
         metadata:
           labels:
@@ -40,7 +29,8 @@ spec:
           restartPolicy: OnFailure
           containers:
             - name: mysqldump
-              image: mysql:8.0
+              image: "{{ .Values.backup.cronjob.image.repository }}:{{ .Values.backup.cronjob.image.tag }}"
+              imagePullPolicy: {{ .Values.backup.cronjob.image.pullPolicy }}
               command:
                 - /bin/sh
                 - -c
@@ -48,11 +38,6 @@ spec:
                   set -euo pipefail
                   BACKUP_FILE="/backups/dump-$(date +%Y%m%d-%H%M%S).sql.gz"
                   echo "==> Starting backup to ${BACKUP_FILE}"
-                  # MYSQL_PWD avoids the "password on CLI is insecure" warning.
-                  # --no-tablespaces: MySQL 8.0 mysqldump tries to dump InnoDB
-                  # tablespace metadata by default, which requires the PROCESS
-                  # privilege.  appuser only has database-level grants, so we
-                  # skip tablespace info — it is not needed for a restore.
                   MYSQL_PWD="${MYSQL_PASSWORD}" mysqldump \
                     --host=mysql \
                     --user="${MYSQL_USER}" \
@@ -62,7 +47,6 @@ spec:
                     --quick \
                     | gzip > "${BACKUP_FILE}"
                   echo "==> Backup complete: $(du -sh ${BACKUP_FILE})"
-                  echo "==> Backup directory contents:"
                   ls -lh /backups/
               env:
                 - name: MYSQL_USER
@@ -84,13 +68,9 @@ spec:
                 - name: backup-storage
                   mountPath: /backups
               resources:
-                requests:
-                  cpu: "100m"
-                  memory: "128Mi"
-                limits:
-                  cpu: "500m"
-                  memory: "256Mi"
+                {{- toYaml .Values.backup.cronjob.resources | nindent 16 }}
           volumes:
             - name: backup-storage
               persistentVolumeClaim:
-                claimName: mysql-backups
+                claimName: {{ .Values.backup.pvc.name }}
+{{- end }}

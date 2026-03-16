@@ -1,28 +1,24 @@
-# infrastructure/mysql-deployment.yaml
-# ---------------------------------------------------------------------------
-# MySQL 8 Deployment.  Credentials are consumed from the mysql-credentials
-# Secret provisioned in wave 0; this Deployment is wave 1 so Argo CD
-# guarantees the Secret exists and the PVC is Bound before scheduling.
-# ---------------------------------------------------------------------------
+{{- if .Values.mysql.deployment.enabled }}
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: mysql
-  namespace: infrastructure
+  namespace: {{ .Release.Namespace }}
   labels:
+    {{- include "infrastructure.labels" . | nindent 4 }}
     app.kubernetes.io/name: mysql
     app.kubernetes.io/component: database
-    app.kubernetes.io/managed-by: argocd
   annotations:
-    argocd.argoproj.io/sync-wave: "1"
+    argocd.argoproj.io/sync-wave: {{ .Values.syncWaves.mysql | quote }}
 spec:
-  replicas: 1
+  replicas: {{ .Values.mysql.deployment.replicaCount }}
   selector:
     matchLabels:
       app.kubernetes.io/name: mysql
       app.kubernetes.io/component: database
   strategy:
-    type: Recreate   # required for single-replica stateful workloads using RWO PVC
+    type: {{ .Values.mysql.deployment.strategy }}
   template:
     metadata:
       labels:
@@ -31,9 +27,10 @@ spec:
     spec:
       containers:
         - name: mysql
-          image: mysql:8.0
+          image: "{{ .Values.mysql.image.repository }}:{{ .Values.mysql.image.tag }}"
+          imagePullPolicy: {{ .Values.mysql.image.pullPolicy }}
           ports:
-            - containerPort: 3306
+            - containerPort: {{ .Values.mysql.service.port }}
               name: mysql
           env:
             - name: MYSQL_ROOT_PASSWORD
@@ -69,37 +66,37 @@ spec:
                 - -u
                 - root
                 - -p$(MYSQL_ROOT_PASSWORD)
-            initialDelaySeconds: 20
-            periodSeconds: 10
-            failureThreshold: 6
+            initialDelaySeconds: {{ .Values.mysql.deployment.readinessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.mysql.deployment.readinessProbe.periodSeconds }}
+            failureThreshold: {{ .Values.mysql.deployment.readinessProbe.failureThreshold }}
           resources:
-            requests:
-              cpu: "250m"
-              memory: "512Mi"
-            limits:
-              cpu: "500m"
-              memory: "1Gi"
+            {{- toYaml .Values.mysql.deployment.resources | nindent 12 }}
       volumes:
         - name: mysql-data
           persistentVolumeClaim:
-            claimName: mysql-data
+            claimName: {{ .Values.mysql.dataPvc.name }}
+{{- end }}
+
+{{- if .Values.mysql.service.enabled }}
 ---
 apiVersion: v1
 kind: Service
 metadata:
   name: mysql
-  namespace: infrastructure
+  namespace: {{ .Release.Namespace }}
   labels:
+    {{- include "infrastructure.labels" . | nindent 4 }}
     app.kubernetes.io/name: mysql
     app.kubernetes.io/component: database
   annotations:
-    argocd.argoproj.io/sync-wave: "1"
+    argocd.argoproj.io/sync-wave: {{ .Values.syncWaves.mysql | quote }}
 spec:
-  type: ClusterIP
+  type: {{ .Values.mysql.service.type }}
   ports:
-    - port: 3306
-      targetPort: 3306
+    - port: {{ .Values.mysql.service.port }}
+      targetPort: {{ .Values.mysql.service.port }}
       name: mysql
   selector:
     app.kubernetes.io/name: mysql
     app.kubernetes.io/component: database
+{{- end }}
