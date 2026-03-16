@@ -1,0 +1,39 @@
+# applications/stack-chart/values.yaml
+# ---------------------------------------------------------------------------
+# Top-level keys match component names.  Templates reference .Values.frontend
+# and .Values.backend respectively, keeping concerns clearly separated.
+# ---------------------------------------------------------------------------
+
+frontend:
+  name: frontend
+  replicaCount: 2
+  image:
+    repository: nginx
+    tag: "1.25-alpine"
+    pullPolicy: IfNotPresent
+  port: 80
+  resources:
+    requests:
+      cpu: "50m"
+      memory: "64Mi"
+    limits:
+      cpu: "200m"
+      memory: "128Mi"
+
+backend:
+  name: backend
+  replicaCount: 2
+  image:
+    repository: hashicorp/http-echo
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  port: 5678
+  args:
+    - "-text=Hello from backend"
+  resources:
+    requests:
+      cpu: "50m"
+      memory: "64Mi"
+    limits:
+      cpu: "200m"
+      memory: "128Mi"

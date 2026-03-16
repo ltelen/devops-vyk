@@ -1,0 +1,10 @@
+# applications/stack-chart/Chart.yaml
+apiVersion: v2
+name: stack-chart
+description: |
+  Unified Helm chart for the application stack.
+  Deploys a Frontend (nginx) and a Backend (generic HTTP service)
+  as separate Deployments sharing common label helpers.
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
