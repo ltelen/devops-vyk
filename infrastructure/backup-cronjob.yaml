@@ -47,10 +47,15 @@ spec:
                   set -euo pipefail
                   BACKUP_FILE="/backups/dump-$(date +%Y%m%d-%H%M%S).sql.gz"
                   echo "==> Starting backup to ${BACKUP_FILE}"
-                  mysqldump \
+                  # MYSQL_PWD avoids the "password on CLI is insecure" warning.
+                  # --no-tablespaces: MySQL 8.0 mysqldump tries to dump InnoDB
+                  # tablespace metadata by default, which requires the PROCESS
+                  # privilege.  appuser only has database-level grants, so we
+                  # skip tablespace info — it is not needed for a restore.
+                  MYSQL_PWD="${MYSQL_PASSWORD}" mysqldump \
                     --host=mysql \
                     --user="${MYSQL_USER}" \
-                    --password="${MYSQL_PASSWORD}" \
+                    --no-tablespaces \
                     --databases "${MYSQL_DATABASE}" \
                     --single-transaction \
                     --quick \
