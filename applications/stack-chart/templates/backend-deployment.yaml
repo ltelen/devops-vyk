@@ -1,0 +1,31 @@
+{{/* applications/stack-chart/templates/backend-deployment.yaml */}}
+{{- $ctx := dict "Release" .Release "Chart" .Chart "component" .Values.backend.name -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "stack-chart.fullname" $ctx }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "stack-chart.labels" $ctx | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  replicas: {{ .Values.backend.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "stack-chart.selectorLabels" $ctx | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "stack-chart.selectorLabels" $ctx | nindent 8 }}
+    spec:
+      containers:
+        - name: {{ .Values.backend.name }}
+          image: "{{ .Values.backend.image.repository }}:{{ .Values.backend.image.tag }}"
+          imagePullPolicy: {{ .Values.backend.image.pullPolicy }}
+          args:
+            {{- toYaml .Values.backend.args | nindent 12 }}
+          ports:
+            - containerPort: {{ .Values.backend.port }}
+          resources:
+            {{- toYaml .Values.backend.resources | nindent 12 }}
