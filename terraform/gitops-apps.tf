@@ -24,8 +24,8 @@
 # ---------------------------------------------------------------------------
 
 locals {
-  repo_url         = "https://github.com/YOUR_ORG/devops-vyk.git" # <-- update before apply
-  target_revision  = "HEAD"
+  repo_url         = "https://github.com/ltelen/devops-vyk.git" # <-- update before apply
+  target_revision  = "feature/initial-task"
   argocd_namespace = kubernetes_namespace.argocd.metadata[0].name
 }
 
