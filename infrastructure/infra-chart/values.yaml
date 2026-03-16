@@ -1,0 +1,78 @@
+syncWaves:
+  base: "0"
+  mysql: "1"
+  backup: "2"
+
+mysql:
+  credentials:
+    rootPassword: rootpassword
+    username: appuser
+    password: apppassword
+    database: appdb
+
+  dataPvc:
+    enabled: true
+    name: mysql-data
+    storage: 5Gi
+    accessModes:
+      - ReadWriteOnce
+
+  config:
+    maxConnections: 151
+    characterSetServer: utf8mb4
+    collationServer: utf8mb4_unicode_ci
+
+  image:
+    repository: mysql
+    tag: "8.0"
+    pullPolicy: IfNotPresent
+
+  deployment:
+    enabled: true
+    replicaCount: 1
+    strategy: Recreate
+    resources:
+      requests:
+        cpu: "250m"
+        memory: "512Mi"
+      limits:
+        cpu: "500m"
+        memory: "1Gi"
+    readinessProbe:
+      initialDelaySeconds: 20
+      periodSeconds: 10
+      failureThreshold: 6
+
+  service:
+    enabled: true
+    type: ClusterIP
+    port: 3306
+
+backup:
+  pvc:
+    enabled: true
+    name: mysql-backups
+    storage: 10Gi
+    accessModes:
+      - ReadWriteOnce
+
+  cronjob:
+    enabled: true
+    name: mysql-backup
+    schedule: "*/5 * * * *"
+    concurrencyPolicy: Forbid
+    successfulJobsHistoryLimit: 5
+    failedJobsHistoryLimit: 5
+    backoffLimit: 2
+    ttlSecondsAfterFinished: 1200
+    image:
+      repository: mysql
+      tag: "8.0"
+      pullPolicy: IfNotPresent
+    resources:
+      requests:
+        cpu: "100m"
+        memory: "128Mi"
+      limits:
+        cpu: "500m"
+        memory: "256Mi"

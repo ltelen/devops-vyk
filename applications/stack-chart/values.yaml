@@ -1,0 +1,95 @@
+# Define any number of services in this list. 
+# The chart renders one Deployment and one Service per entry (unless explicitly disabled).
+
+services:
+  - name: backend
+    syncWave: "0"
+    deployment:
+      enabled: true
+    service:
+      enabled: true
+      type: ClusterIP
+    replicaCount: 2
+    image:
+      repository: hashicorp/http-echo
+      tag: "latest"
+      pullPolicy: IfNotPresent
+    args:
+      - "-text=Hello from backend"
+    port: 5678
+    probes:
+      liveness:
+        tcpSocket:
+          port: 5678
+        initialDelaySeconds: 10
+        periodSeconds: 10
+      readiness:
+        tcpSocket:
+          port: 5678
+        initialDelaySeconds: 5
+        periodSeconds: 5
+      startup:
+        tcpSocket:
+          port: 5678
+        failureThreshold: 12
+        periodSeconds: 5
+    configmap:
+      enabled: true
+      data:
+        APP_ENV: "production"
+        LOG_LEVEL: "info"
+    secret:
+      enabled: true
+      data:
+        API_KEY: "change-me-in-production"
+    resources:
+      requests:
+        cpu: "50m"
+        memory: "64Mi"
+        ephemeral-storage: "100Mi"
+      limits:
+        cpu: "200m"
+        memory: "128Mi"
+        ephemeral-storage: "200Mi"
+
+  - name: frontend
+    syncWave: "1"
+    deployment:
+      enabled: true
+    service:
+      enabled: true
+      type: ClusterIP
+    replicaCount: 2
+    image:
+      repository: nginx
+      tag: "1.25-alpine"
+      pullPolicy: IfNotPresent
+    port: 80
+    probes:
+      liveness:
+        httpGet:
+          path: /
+          port: 80
+        initialDelaySeconds: 10
+        periodSeconds: 10
+      readiness:
+        httpGet:
+          path: /
+          port: 80
+        initialDelaySeconds: 5
+        periodSeconds: 5
+      startup:
+        httpGet:
+          path: /
+          port: 80
+        failureThreshold: 12
+        periodSeconds: 5
+    resources:
+      requests:
+        cpu: "50m"
+        memory: "64Mi"
+        ephemeral-storage: "100Mi"
+      limits:
+        cpu: "200m"
+        memory: "128Mi"
+        ephemeral-storage: "200Mi"

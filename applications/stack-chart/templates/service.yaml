@@ -1,0 +1,25 @@
+{{/* applications/stack-chart/templates/service.yaml */}}
+{{- range $service := .Values.services }}
+{{ if (default true $service.service.enabled) }}
+{{- $ctx := dict "Release" $.Release "Chart" $.Chart "component" $service.name -}}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "stack-chart.fullname" $ctx }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "stack-chart.labels" $ctx | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/sync-wave: {{ default "0" $service.syncWave | quote }}
+spec:
+  type: {{ default "ClusterIP" $service.service.type }}
+  ports:
+    - port: {{ $service.port }}
+      targetPort: {{ $service.port }}
+      protocol: TCP
+      name: http
+  selector:
+    {{- include "stack-chart.selectorLabels" $ctx | nindent 4 }}
+{{ end }}
+{{- end }}

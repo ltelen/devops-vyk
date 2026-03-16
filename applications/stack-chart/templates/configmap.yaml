@@ -1,0 +1,17 @@
+{{- range $service := .Values.services }}
+{{- if and $service.configmap (default false $service.configmap.enabled) }}
+{{- $ctx := dict "Release" $.Release "Chart" $.Chart "component" $service.name -}}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "stack-chart.fullname" $ctx }}
+  namespace: {{ $.Release.Namespace }}
+  labels:
+    {{- include "stack-chart.labels" $ctx | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/sync-wave: {{ default "0" $service.syncWave | quote }}
+data:
+  {{- toYaml $service.configmap.data | nindent 2 }}
+{{- end }}
+{{- end }}
