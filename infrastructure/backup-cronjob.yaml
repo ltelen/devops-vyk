@@ -1,0 +1,90 @@
+# infrastructure/backup-cronjob.yaml
+# ---------------------------------------------------------------------------
+# MySQL backup CronJob — wave 2.
+#
+# Sync Wave 2 ensures:
+#   - Wave 0: mysql-credentials Secret + both PVCs are Bound
+#   - Wave 1: MySQL Deployment is Healthy (readiness probe passed)
+#   - Wave 2: THIS CronJob is created only after MySQL is confirmed running
+#
+# The job runs mysqldump and writes compressed output to the backup PVC.
+# Filename includes a timestamp; old files are not pruned here — add a
+# separate housekeeping job if storage pressure becomes a concern.
+# ---------------------------------------------------------------------------
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: mysql-backup
+  namespace: infrastructure
+  labels:
+    app.kubernetes.io/name: mysql-backup
+    app.kubernetes.io/component: backup
+    app.kubernetes.io/managed-by: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  schedule: "*/5 * * * *"      # every 5 minutes
+  concurrencyPolicy: Forbid    # never run two backup jobs simultaneously
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: mysql-backup
+            app.kubernetes.io/component: backup
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: mysqldump
+              image: mysql:8.0
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -euo pipefail
+                  BACKUP_FILE="/backups/dump-$(date +%Y%m%d-%H%M%S).sql.gz"
+                  echo "==> Starting backup to ${BACKUP_FILE}"
+                  mysqldump \
+                    --host=mysql \
+                    --user="${MYSQL_USER}" \
+                    --password="${MYSQL_PASSWORD}" \
+                    --databases "${MYSQL_DATABASE}" \
+                    --single-transaction \
+                    --quick \
+                    | gzip > "${BACKUP_FILE}"
+                  echo "==> Backup complete: $(du -sh ${BACKUP_FILE})"
+                  echo "==> Backup directory contents:"
+                  ls -lh /backups/
+              env:
+                - name: MYSQL_USER
+                  valueFrom:
+                    secretKeyRef:
+                      name: mysql-credentials
+                      key: username
+                - name: MYSQL_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: mysql-credentials
+                      key: password
+                - name: MYSQL_DATABASE
+                  valueFrom:
+                    secretKeyRef:
+                      name: mysql-credentials
+                      key: database
+              volumeMounts:
+                - name: backup-storage
+                  mountPath: /backups
+              resources:
+                requests:
+                  cpu: "100m"
+                  memory: "128Mi"
+                limits:
+                  cpu: "500m"
+                  memory: "256Mi"
+          volumes:
+            - name: backup-storage
+              persistentVolumeClaim:
+                claimName: mysql-backups
