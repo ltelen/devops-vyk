@@ -1,8 +1,5 @@
-# applications/stack-chart/values.yaml
-# ---------------------------------------------------------------------------
-# Define any number of services in this list. The chart renders one Deployment
-# and one Service per entry (unless explicitly disabled).
-# ---------------------------------------------------------------------------
+# Define any number of services in this list. 
+# The chart renders one Deployment and one Service per entry (unless explicitly disabled).
 
 services:
   - name: backend
