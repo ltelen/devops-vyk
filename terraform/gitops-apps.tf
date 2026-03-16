@@ -1,6 +1,6 @@
 locals {
   repo_url         = "https://github.com/ltelen/devops-vyk.git"
-  target_revision  = "feature/initial-task"
+  target_revision  = "main"
   argocd_namespace = kubernetes_namespace.argocd.metadata[0].name
 }
 
