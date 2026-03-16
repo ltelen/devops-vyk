@@ -33,6 +33,15 @@ services:
           port: 5678
         failureThreshold: 12
         periodSeconds: 5
+    configmap:
+      enabled: true
+      data:
+        APP_ENV: "production"
+        LOG_LEVEL: "info"
+    secret:
+      enabled: true
+      data:
+        API_KEY: "change-me-in-production"
     resources:
       requests:
         cpu: "50m"

@@ -1,0 +1,19 @@
+{{- if .Values.mysql.config }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mysql-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "infrastructure.labels" . | nindent 4 }}
+    app.kubernetes.io/component: database
+  annotations:
+    argocd.argoproj.io/sync-wave: {{ .Values.syncWaves.base | quote }}
+data:
+  my.cnf: |
+    [mysqld]
+    max_connections={{ .Values.mysql.config.maxConnections }}
+    character-set-server={{ .Values.mysql.config.characterSetServer }}
+    collation-server={{ .Values.mysql.config.collationServer }}
+{{- end }}

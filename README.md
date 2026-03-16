@@ -9,7 +9,8 @@
 
 ### Infrastructure chart
 
-- `mysql-credentials` secret
+- `mysql-credentials` Secret (credentials)
+- `mysql-config` ConfigMap (server config mounted at `/etc/mysql/conf.d`)
 - `mysql-data` PVC
 - `mysql-backups` PVC
 - `mysql` Deployment + Service
@@ -31,8 +32,10 @@ Each service entry supports:
 - sync wave
 - optional probes (`liveness`, `readiness`, `startup`)
 - optional args
+- optional ConfigMap (`configmap.enabled: true`, `configmap.data`)
+- optional Secret (`secret.enabled: true`, `secret.data`) — values are base64-encoded at render time
 
-If probes are omitted, they are simply not rendered.
+Resources that are disabled or omitted are not rendered.
 
 ## Prerequisites
 
@@ -106,6 +109,71 @@ Manual backup trigger:
 ```bash
 kubectl create job --from=cronjob/mysql-backup manual-backup-$(date +%s) -n infrastructure
 kubectl logs -n infrastructure -l job-name=manual-backup-<suffix> -f
+```
+
+Verify backup files are written to the PVC:
+
+```bash
+kubectl run backup-inspector \
+  --image=mysql:8.0 \
+  --restart=Never \
+  --rm -it \
+  --overrides='{
+    "spec": {
+      "volumes": [{"name":"bk","persistentVolumeClaim":{"claimName":"mysql-backups"}}],
+      "containers": [{"name":"backup-inspector","image":"mysql:8.0",
+        "command":["bash"],"volumeMounts":[{"name":"bk","mountPath":"/backups"}]}]
+    }
+  }' \
+  -n infrastructure
+
+# Inside the pod:
+ls -lh /backups/
+zcat /backups/dump-<timestamp>.sql.gz | head -20
+```
+
+## Access frontend and backend
+
+The services are ClusterIP. Use port-forward to reach them locally:
+
+```bash
+# Frontend (nginx)
+kubectl port-forward svc/applications-frontend -n applications 8080:80
+curl http://localhost:8080
+
+# Backend (http-echo)
+kubectl port-forward svc/applications-backend -n applications 5678:5678
+curl http://localhost:5678
+# returns: Hello from backend
+```
+
+Service names follow the pattern `<argo-app-name>-<service-name>`. The Argo CD app is named `applications`, so the services are `applications-frontend` and `applications-backend`.
+
+## Verify data persistence
+
+This confirms that MySQL data survives a pod restart (data lives on the PVC, not inside the container):
+
+```bash
+# Connect to MySQL
+kubectl exec -it deploy/mysql -n infrastructure -- \
+  mysql -u appuser -papppassword appdb
+
+# Create a table and insert a row
+CREATE TABLE IF NOT EXISTS test (id INT PRIMARY KEY, val VARCHAR(50));
+INSERT INTO test VALUES (1, 'persisted');
+exit
+
+# Delete the MySQL pod — Recreate strategy brings it back automatically
+kubectl delete pod -l app.kubernetes.io/name=mysql -n infrastructure
+
+# Wait for the pod to become ready
+kubectl wait --for=condition=ready pod \
+  -l app.kubernetes.io/name=mysql \
+  -n infrastructure --timeout=60s
+
+# Verify the row survived
+kubectl exec -it deploy/mysql -n infrastructure -- \
+  mysql -u appuser -papppassword appdb -e "SELECT * FROM test;"
 ```
 
 ## Notes and limitations

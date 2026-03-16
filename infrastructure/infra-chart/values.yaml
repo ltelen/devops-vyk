@@ -17,6 +17,11 @@ mysql:
     accessModes:
       - ReadWriteOnce
 
+  config:
+    maxConnections: 151
+    characterSetServer: utf8mb4
+    collationServer: utf8mb4_unicode_ci
+
   image:
     repository: mysql
     tag: "8.0"
