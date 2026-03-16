@@ -25,11 +25,12 @@ metadata:
 spec:
   schedule: "*/5 * * * *"      # every 5 minutes
   concurrencyPolicy: Forbid    # never run two backup jobs simultaneously
-  successfulJobsHistoryLimit: 3
-  failedJobsHistoryLimit: 3
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 2
   jobTemplate:
     spec:
       backoffLimit: 2
+      ttlSecondsAfterFinished: 900  # auto-cleanup after 15 minutes
       template:
         metadata:
           labels:
